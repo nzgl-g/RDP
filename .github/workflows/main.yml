@@ -1,38 +1,25 @@
-name: AWS
-on: workflow_dispatch
+name: RDP via Ngrok
+
+on: [workflow_dispatch]
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 9999
 
     steps:
-      - name: Downloading ngrok
+      - name: Download Ngrok
         run: |
-          Invoke-WebRequest https://raw.githubusercontent.com/adtitas/ngrok-rdp/main/resources/ngrok.zip -OutFile ngrok.zip
-          Invoke-WebRequest https://raw.githubusercontent.com/adtitas/ngrok-rdp/main/resources/start.bat -OutFile start.bat
+          Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
+          Remove-Item ngrok.zip
+          
+      - name: Connect to Ngrok
+        run: .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Extracting ngrok Files
-        run: Expand-Archive ngrok.zip
+      - name: Create RDP Tunnel
+        run: .\ngrok\ngrok.exe tcp 3389
 
-      - name: Connecting ngrok Account
-        run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Enabling RDP Access [CPU 2 Core - 7GB Ram - 256 SSD]
+      - name: Get Ngrok URL
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-
-      - name: Creating Tunnel
-        run: Start-Process Powershell -ArgumentList '-Noexit -Command ".\ngrok\ngrok.exe tcp 3389"'
-
-      - name: Connect to RDP [Copy ip, username, password from here]
-        run: cmd /c start.bat
-
-      - name: TimeCount
-        run: |
-          Invoke-WebRequest https://raw.githubusercontent.com/adtitas/ngrok-rdp/main/resources/loop.ps1 -OutFile loop.ps1
-          ./loop.ps1
+          $url = Invoke-WebRequest http://localhost:4040/api/tunnels | ConvertFrom-Json | Select-Object -ExpandProperty tunnels | Where-Object { $_.proto -eq "tcp" } | Select-Object -ExpandProperty public_url
+          Write-Output "Ngrok RDP URL: $url"
