@@ -1,25 +1,38 @@
-name: RDP via Ngrok
+name: Create Alfred Workflow
 
-on: [workflow_dispatch]
-
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+  
 jobs:
   build:
-    runs-on: windows-latest
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Download Ngrok
-        run: |
-          Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
-          Remove-Item ngrok.zip
-          
-      - name: Connect to Ngrok
-        run: .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-
-      - name: Create RDP Tunnel
-        run: .\ngrok\ngrok.exe tcp 3389
-
-      - name: Get Ngrok URL
-        run: |
-          $url = Invoke-WebRequest http://localhost:4040/api/tunnels | ConvertFrom-Json | Select-Object -ExpandProperty tunnels | Where-Object { $_.proto -eq "tcp" } | Select-Object -ExpandProperty public_url
-          Write-Output "Ngrok RDP URL: $url"
+    - uses: actions/checkout@v2
+    - name: Build Alfred Workflow
+      id: alfred_builder
+      uses: mperezi/build-alfred-workflow@v1
+      with:
+        workflow_dir: .
+        exclude_patterns: '.git/* .github/* .gitignore LICENSE'
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Upload Alfred Workflow
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ${{ steps.alfred_builder.outputs.workflow_file }}
+        asset_name: ${{ steps.alfred_builder.outputs.workflow_file }}
+        asset_content_type: application/zip
